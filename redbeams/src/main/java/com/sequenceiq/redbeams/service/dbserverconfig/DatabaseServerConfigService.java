@@ -26,6 +26,7 @@ import org.springframework.validation.MapBindingResult;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Throwables;
 import com.google.common.collect.Sets;
+import com.sequenceiq.authorization.service.ResourceBasedEnvironmentCrnProvider;
 import com.sequenceiq.cloudbreak.auth.altus.Crn;
 import com.sequenceiq.cloudbreak.common.archive.AbstractArchivistService;
 import com.sequenceiq.cloudbreak.common.database.DatabaseCommon;
@@ -51,7 +52,8 @@ import com.sequenceiq.redbeams.service.stack.DBStackService;
 import com.sequenceiq.redbeams.service.validation.DatabaseServerConnectionValidator;
 
 @Service
-public class DatabaseServerConfigService extends AbstractArchivistService<DatabaseServerConfig> {
+public class DatabaseServerConfigService extends AbstractArchivistService<DatabaseServerConfig>
+        implements ResourceBasedEnvironmentCrnProvider<DatabaseServerConfig> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DatabaseServerConfigService.class);
 
@@ -315,5 +317,10 @@ public class DatabaseServerConfigService extends AbstractArchivistService<Databa
     @VisibleForTesting
     boolean validateDatabaseName(String databaseName) {
         return VALID_DATABASE_NAME.matcher(databaseName).matches();
+    }
+
+    @Override
+    public Class<DatabaseServerConfig> supportedResourceClass() {
+        return DatabaseServerConfig.class;
     }
 }

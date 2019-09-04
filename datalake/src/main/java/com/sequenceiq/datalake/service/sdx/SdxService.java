@@ -26,6 +26,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.sequenceiq.authorization.service.ResourceBasedEnvironmentCrnProvider;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.StackV4Endpoint;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.StackV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.instancegroup.securitygroup.SecurityGroupV4Request;
@@ -65,7 +66,7 @@ import com.sequenceiq.sdx.api.model.SdxClusterRequest;
 import com.sequenceiq.sdx.api.model.SdxClusterShape;
 
 @Service
-public class SdxService implements ResourceIdProvider {
+public class SdxService implements ResourceIdProvider, ResourceBasedEnvironmentCrnProvider<SdxCluster> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SdxService.class);
 
@@ -449,6 +450,25 @@ public class SdxService implements ResourceIdProvider {
         }, () -> {
             throw notFound("SDX cluster", name).get();
         });
+    }
+
+    @Override
+    public String getEnvironmentCrnByResourceName(String resourceName) {
+        String userCrn = threadBasedUserCrnProvider.getUserCrn();
+        SdxCluster sdxCluster = getSdxByNameInAccount(userCrn, resourceName);
+        return sdxCluster.getEnvCrn();
+    }
+
+    @Override
+    public String getEnvironmentCrnByResourceCrn(String resourceCrn) {
+        String userCrn = threadBasedUserCrnProvider.getUserCrn();
+        SdxCluster sdxCluster = getByCrn(userCrn, resourceCrn);
+        return sdxCluster.getEnvCrn();
+    }
+
+    @Override
+    public Class<SdxCluster> supportedResourceClass() {
+        return SdxCluster.class;
     }
 
     private void deleteSdxCluster(SdxCluster sdxCluster, boolean forced) {

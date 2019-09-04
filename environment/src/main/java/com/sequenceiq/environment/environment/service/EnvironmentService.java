@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import com.sequenceiq.authorization.service.ResourceBasedEnvironmentCrnProvider;
 import com.sequenceiq.cloudbreak.cloud.model.CloudRegions;
 import com.sequenceiq.cloudbreak.cloud.model.Coordinate;
 import com.sequenceiq.cloudbreak.common.exception.NotFoundException;
@@ -40,7 +41,7 @@ import com.sequenceiq.environment.platformresource.PlatformResourceRequest;
 import com.sequenceiq.flow.core.ResourceIdProvider;
 
 @Service
-public class EnvironmentService implements ResourceIdProvider {
+public class EnvironmentService implements ResourceIdProvider, ResourceBasedEnvironmentCrnProvider<Environment> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EnvironmentService.class);
 
@@ -264,5 +265,10 @@ public class EnvironmentService implements ResourceIdProvider {
         } else {
             environment.setAdminGroupName(adminGroupName);
         }
+    }
+
+    @Override
+    public Class<Environment> supportedResourceClass() {
+        return Environment.class;
     }
 }

@@ -24,6 +24,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.validation.MapBindingResult;
 
 import com.google.common.collect.Sets;
+import com.sequenceiq.authorization.service.ResourceBasedEnvironmentCrnProvider;
 import com.sequenceiq.cloudbreak.auth.altus.Crn;
 import com.sequenceiq.cloudbreak.common.archive.AbstractArchivistService;
 import com.sequenceiq.cloudbreak.common.database.DatabaseCommon;
@@ -42,7 +43,8 @@ import com.sequenceiq.redbeams.service.drivers.DriverFunctions;
 import com.sequenceiq.redbeams.service.validation.DatabaseConnectionValidator;
 
 @Service
-public class DatabaseConfigService extends AbstractArchivistService<DatabaseConfig> implements ResourceIdProvider {
+public class DatabaseConfigService extends AbstractArchivistService<DatabaseConfig>
+        implements ResourceIdProvider, ResourceBasedEnvironmentCrnProvider<DatabaseConfig> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DatabaseConfigService.class);
 
@@ -251,5 +253,10 @@ public class DatabaseConfigService extends AbstractArchivistService<DatabaseConf
     @Override
     public JpaRepository repository() {
         return repository;
+    }
+
+    @Override
+    public Class<DatabaseConfig> supportedResourceClass() {
+        return DatabaseConfig.class;
     }
 }
