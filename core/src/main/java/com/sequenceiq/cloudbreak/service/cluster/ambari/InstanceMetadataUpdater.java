@@ -120,7 +120,7 @@ public class InstanceMetadataUpdater {
         for (InstanceMetaData im : instanceMetaDataSet) {
             Map<String, String> packageVersionsOnHost = packageVersionsByNameByHost.get(im.getDiscoveryFQDN());
             if (CollectionUtils.isEmpty(packageVersionsOnHost)) {
-                failedVersionQueriesByHost.add(im.getDiscoveryFQDN());
+                failedVersionQueriesByHost.add(im.getDiscoveryFQDN() != null ? im.getDiscoveryFQDN() : im.getPublicIpWrapper());
                 Image image = im.getImage().get(Image.class);
                 image.getPackageVersions().clear();
                 im.setImage(new Json(image));
