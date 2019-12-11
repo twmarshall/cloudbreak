@@ -1,5 +1,6 @@
 package com.sequenceiq.freeipa.service.freeipa.user;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -10,6 +11,7 @@ import javax.inject.Inject;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -39,6 +41,10 @@ public class UsersyncPoller {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(UsersyncPoller.class);
 
+    @VisibleForTesting
+    @Value("${freeipa.usersync.poller.cooldown-millis}")
+    long cooldownMillis;
+
     @Inject
     private StackService stackService;
 
@@ -46,7 +52,7 @@ public class UsersyncPoller {
     private UserSyncStatusService userSyncStatusService;
 
     @Inject
-    private UserService userService;
+    private UserSyncService userSyncService;
 
     @Inject
     private UmsEventGenerationIdsProvider umsEventGenerationIdsProvider;
@@ -73,7 +79,6 @@ public class UsersyncPoller {
             LOGGER.debug("Setting request id = {} for this poll", requestId);
 
             ThreadBasedUserCrnProvider.doAs(INTERNAL_ACTOR_CRN, () -> {
-
                 LOGGER.debug("Attempting to sync users to FreeIPA stacks");
                 List<Stack> stackList = stackService.findAllWithStatuses(Status.AVAILABLE_STATUSES);
                 LOGGER.debug("Found {} active stacks", stackList.size());
@@ -81,30 +86,11 @@ public class UsersyncPoller {
                 stackList.stream()
                         .collect(Collectors.groupingBy(Stack::getAccountId))
                         .entrySet().stream()
-                        .filter(stringListEntry -> {
-                            String accountId = stringListEntry.getKey();
-                            boolean entitled = entitlementService.automaticUsersyncPollerEnabled(INTERNAL_ACTOR_CRN, accountId);
-                            if (!entitled) {
-                                LOGGER.debug("Usersync polling is not entitled in account {}. skipping", accountId);
-                            }
-                            return entitled;
-                        })
+                        .filter(stringListEntry -> isAccountEntitled(stringListEntry.getKey()))
                         .forEach(stringListEntry -> {
                             String accountId = stringListEntry.getKey();
                             LOGGER.debug("Usersync polling is entitled in account {}", accountId);
-                            UmsEventGenerationIds currentGeneration =
-                                    umsEventGenerationIdsProvider.getEventGenerationIds(accountId, requestId);
-                            stringListEntry.getValue().stream()
-                                    .forEach(stack -> {
-                                        if (isStale(stack, currentGeneration)) {
-                                            LOGGER.debug("Environment {} in Account {} is stale.", stack.getEnvironmentCrn(), stack.getAccountId());
-                                            SyncOperationStatus status = userService.synchronizeUsers(stack.getAccountId(), INTERNAL_ACTOR_CRN,
-                                                    Set.of(stack.getEnvironmentCrn()), Set.of(), Set.of());
-                                            LOGGER.debug("Sync request resulted in operation {}", status);
-                                        } else {
-                                            LOGGER.debug("Environment {} in Account {} is up-to-date.", stack.getEnvironmentCrn(), stack.getAccountId());
-                                        }
-                                    });
+                            syncFreeIpaStacksInAccount(requestId, accountId, stringListEntry.getValue());
                         });
             });
         } finally {
@@ -113,13 +99,67 @@ public class UsersyncPoller {
     }
 
     @VisibleForTesting
-    boolean isStale(Stack stack, UmsEventGenerationIds currentGeneration) {
+    boolean isStale(Stack stack, UserSyncStatus userSyncStatus, UmsEventGenerationIds currentGeneration) {
         try {
-            UserSyncStatus userSyncStatus = userSyncStatusService.getOrCreateForStack(stack);
-            return !currentGeneration.equals(userSyncStatus.getUmsEventGenerationIds().get(UmsEventGenerationIds.class));
+            boolean stale = userSyncStatus == null ||
+                    userSyncStatus.getUmsEventGenerationIds() == null;
+            if (!stale) {
+                try {
+                    UmsEventGenerationIds lastUmsEventGenerationIds = userSyncStatus.getUmsEventGenerationIds().get(UmsEventGenerationIds.class);
+                    stale = !currentGeneration.equals(lastUmsEventGenerationIds);
+                } catch (IOException e) {
+                    LOGGER.warn("Failed to retrieve UmsEventGenerationIds for Environment {} in Account {}. Assuming stale",
+                            stack.getEnvironmentCrn(), stack.getAccountId());
+                    stale = true;
+                }
+            }
+            LOGGER.debug("Environment {} in Account {} {} stale", stack.getEnvironmentCrn(), stack.getAccountId(), stale ? "is" : "is not");
+            return stale;
         } catch (Exception e) {
             LOGGER.warn("Unable to calculate staleness due to exception.", e);
             return false;
         }
+    }
+
+    @VisibleForTesting
+    boolean isCooldownExpired(Stack stack, UserSyncStatus userSyncStatus, long cooldownThresholdTime) {
+        try {
+            boolean cool = userSyncStatus == null ||
+                    userSyncStatus.getLastFullSyncStartTime() == null ||
+                    userSyncStatus.getLastFullSyncStartTime() < cooldownThresholdTime;
+            LOGGER.debug("Environment {} in Account {} {} cool", stack.getEnvironmentCrn(), stack.getAccountId(), cool ? "is" : "is not");
+            return cool;
+        } catch (Exception e) {
+            LOGGER.warn("Unable to determine if cooldown expired due to exception.", e);
+            return false;
+        }
+    }
+
+    private boolean isAccountEntitled(String accountId) {
+        boolean entitled = entitlementService.automaticUsersyncPollerEnabled(INTERNAL_ACTOR_CRN, accountId);
+        if (!entitled) {
+            LOGGER.debug("Usersync polling is not entitled in accout {}. skipping", accountId);
+        }
+        return entitled;
+    }
+
+    private void syncFreeIpaStacksInAccount(Optional<String> requestId, String accountId, List<Stack> stacks) {
+        long cooldownThresholdTime = System.currentTimeMillis() - cooldownMillis;
+
+        UmsEventGenerationIds currentGeneration =
+                umsEventGenerationIdsProvider.getEventGenerationIds(accountId, requestId);
+        stacks.stream()
+                .forEach(stack -> {
+                    UserSyncStatus userSyncStatus = userSyncStatusService.getOrCreateForStack(stack);
+                    if (isStale(stack, userSyncStatus, currentGeneration) && isCooldownExpired(stack, userSyncStatus, cooldownThresholdTime)) {
+                        LOGGER.debug("Environment {} in Account {} is both stale and cool.",
+                                stack.getEnvironmentCrn(), stack.getAccountId());
+                        SyncOperationStatus operation = userSyncService.synchronizeUsers(stack.getAccountId(), INTERNAL_ACTOR_CRN,
+                                Set.of(stack.getEnvironmentCrn()), Set.of(), Set.of());
+                        LOGGER.debug("User Sync request resulted in operation {}", operation);
+                    } else {
+                        LOGGER.debug("Environment {} in Account {} is up-to-date.", stack.getEnvironmentCrn(), stack.getAccountId());
+                    }
+                });
     }
 }
