@@ -148,7 +148,7 @@ public class SdxService implements ResourceIdProvider {
         LOGGER.info("Creating SDX cluster with name {}", name);
         validateSdxRequest(name, sdxClusterRequest.getEnvironment(), getAccountIdFromCrn(userCrn));
         validateInternalSdxRequest(stackV4Request, sdxClusterRequest.getClusterShape());
-        DetailedEnvironmentResponse environment = getEnvironment(sdxClusterRequest);
+        DetailedEnvironmentResponse environment = getEnvironment(sdxClusterRequest.getEnvironment());
         SdxCluster sdxCluster = new SdxCluster();
         sdxCluster.setInitiatorUserCrn(userCrn);
         sdxCluster.setCrn(createCrn(getAccountIdFromCrn(userCrn)));
@@ -166,6 +166,7 @@ public class SdxService implements ResourceIdProvider {
             sdxCluster.setCloudStorageFileSystemType(sdxClusterRequest.getCloudStorage().getFileSystemType());
         }
         externalDatabaseConfigurer.configure(CloudPlatform.valueOf(environment.getCloudPlatform()), sdxClusterRequest.getExternalDatabase(), sdxCluster);
+        updateStackV4RequestWithEnvironmentCrnIfNotExistsOnIt(stackV4Request, environment.getCrn());
         StackV4Request stackRequest = getStackRequest(stackV4Request, sdxClusterRequest.getClusterShape(), environment.getCloudPlatform());
         prepareCloudStorageForStack(sdxClusterRequest, stackRequest, sdxCluster, environment);
         try {
@@ -185,6 +186,13 @@ public class SdxService implements ResourceIdProvider {
         sdxReactorFlowManager.triggerSdxCreation(sdxCluster.getId());
 
         return sdxCluster;
+    }
+
+    private void updateStackV4RequestWithEnvironmentCrnIfNotExistsOnIt(StackV4Request request, String environmentCrn) {
+        if (request != null) {
+            request.setEnvironmentCrn(environmentCrn);
+            LOGGER.debug("Environment crn for internal sdx stack request set to: {}", environmentCrn);
+        }
     }
 
     private void prepareCloudStorageForStack(SdxClusterRequest sdxClusterRequest, StackV4Request stackV4Request,
@@ -415,7 +423,7 @@ public class SdxService implements ResourceIdProvider {
         }
     }
 
-    private DetailedEnvironmentResponse getEnvironment(SdxClusterRequest sdxClusterRequest) {
-        return environmentClientService.getByName(sdxClusterRequest.getEnvironment());
+    private DetailedEnvironmentResponse getEnvironment(String environmentName) {
+        return environmentClientService.getByName(environmentName);
     }
 }
