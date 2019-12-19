@@ -72,4 +72,8 @@ public interface Setup {
      * @param upscale              true in case of upscale, false in case of downscale
      */
     void scalingPrerequisites(AuthenticatedContext authenticatedContext, CloudStack stack, boolean upscale);
+
+    default void checkQuotas(AuthenticatedContext authenticatedContext, int instancesToCreate, String groupName) {
+
+    }
 }

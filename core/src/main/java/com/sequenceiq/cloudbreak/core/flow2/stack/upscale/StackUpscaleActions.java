@@ -104,6 +104,7 @@ public class StackUpscaleActions {
             @Override
             protected void doExecute(StackScalingFlowContext context, StackScaleTriggerEvent payload, Map<Object, Object> variables) {
                 int instanceCountToCreate = getInstanceCountToCreate(context.getStack(), payload.getInstanceGroup(), payload.getAdjustment());
+                stackUpscaleService.checkQuotas(instanceCountToCreate, payload.getInstanceGroup());
                 stackUpscaleService.addInstanceFireEventAndLog(context.getStack(), payload.getAdjustment());
                 if (instanceCountToCreate > 0) {
                     stackUpscaleService.startAddInstances(context.getStack(), payload.getAdjustment());
@@ -125,7 +126,7 @@ public class StackUpscaleActions {
                         getInstanceCountToCreate(context.getStack(), context.getInstanceGroupName(), context.getAdjustment()));
                 Stack updatedStack = instanceMetaDataService.saveInstanceAndGetUpdatedStack(context.getStack(), newInstances, false);
                 CloudStack cloudStack = cloudStackConverter.convert(updatedStack);
-                return new UpscaleStackValidationRequest<UpscaleStackValidationResult>(context.getCloudContext(), context.getCloudCredential(), cloudStack);
+                return new UpscaleStackValidationRequest<UpscaleStackValidationResult>(context.getCloudContext(), context.getCloudCredential(), cloudStack, newInstances, context.getInstanceGroupName());
             }
         };
     }

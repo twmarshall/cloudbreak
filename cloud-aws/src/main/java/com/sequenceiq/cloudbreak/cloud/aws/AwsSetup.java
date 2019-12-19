@@ -18,21 +18,28 @@ import com.amazonaws.AmazonServiceException;
 import com.amazonaws.services.autoscaling.model.AutoScalingGroup;
 import com.amazonaws.services.autoscaling.model.DescribeAutoScalingGroupsRequest;
 import com.amazonaws.services.autoscaling.model.DescribeAutoScalingGroupsResult;
+import com.amazonaws.services.autoscaling.model.DescribeLaunchConfigurationsRequest;
 import com.amazonaws.services.autoscaling.model.Instance;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2Client;
+import com.amazonaws.services.ec2.model.DescribeInstanceTypesRequest;
+import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
 import com.amazonaws.services.ec2.model.DescribeInternetGatewaysRequest;
 import com.amazonaws.services.ec2.model.DescribeInternetGatewaysResult;
 import com.amazonaws.services.ec2.model.DescribeKeyPairsRequest;
 import com.amazonaws.services.ec2.model.DescribeKeyPairsResult;
 import com.amazonaws.services.ec2.model.DescribeSubnetsRequest;
 import com.amazonaws.services.ec2.model.DescribeSubnetsResult;
+import com.amazonaws.services.ec2.model.Filter;
 import com.amazonaws.services.ec2.model.InternetGateway;
 import com.amazonaws.services.ec2.model.InternetGatewayAttachment;
 import com.amazonaws.services.ec2.model.Subnet;
+import com.amazonaws.services.servicequotas.model.GetServiceQuotaRequest;
+import com.google.common.collect.Lists;
 import com.sequenceiq.cloudbreak.cloud.Setup;
 import com.sequenceiq.cloudbreak.cloud.aws.client.AmazonAutoScalingRetryClient;
 import com.sequenceiq.cloudbreak.cloud.aws.client.AmazonCloudFormationRetryClient;
+import com.sequenceiq.cloudbreak.cloud.aws.client.AmazonServiceQuotaRetryClient;
 import com.sequenceiq.cloudbreak.cloud.aws.view.AwsCredentialView;
 import com.sequenceiq.cloudbreak.cloud.aws.view.AwsInstanceView;
 import com.sequenceiq.cloudbreak.cloud.aws.view.AwsNetworkView;
@@ -217,6 +224,8 @@ public class AwsSetup implements Setup {
         if (!upscale) {
             return;
         }
+
+
         AmazonCloudFormationRetryClient cloudFormationClient = awsClient.createCloudFormationRetryClient(new AwsCredentialView(ac.getCloudCredential()),
                 ac.getCloudContext().getLocation().getRegion().value());
         AmazonAutoScalingRetryClient amazonASClient = awsClient.createAutoScalingRetryClient(new AwsCredentialView(ac.getCloudCredential()),
@@ -255,5 +264,58 @@ public class AwsSetup implements Setup {
                 throw new CloudConnectorException(errorMessage);
             }
         }
+    }
+
+    @Override
+    public void checkQuotas(AuthenticatedContext authenticatedContext, int instancesToCreate, String groupName) {
+        AmazonAutoScalingRetryClient amazonASClient = getAutoScalingRetryClient(authenticatedContext);
+        AmazonEC2Client amazonEC2Client = getEC2Client(authenticatedContext);
+        AmazonServiceQuotaRetryClient amazonServiceQuotaRetryClient = getServiceQuotasClient(authenticatedContext);
+        // get current count of group
+        // calculate diff
+        // get instance type
+        DescribeAutoScalingGroupsRequest describeAsRequest = new DescribeAutoScalingGroupsRequest();
+        describeAsRequest.setAutoScalingGroupNames(Lists.newArrayList(groupName));
+        String launchConfigName = amazonASClient.describeAutoScalingGroups(describeAsRequest).getAutoScalingGroups().get(0).getLaunchConfigurationName();
+        DescribeLaunchConfigurationsRequest describeLaunchConfigurationsRequest = new DescribeLaunchConfigurationsRequest();
+        describeLaunchConfigurationsRequest.setLaunchConfigurationNames(Lists.newArrayList(launchConfigName));
+        String instanceType = amazonASClient.describeLaunchConfigurations(describeLaunchConfigurationsRequest).getLaunchConfigurations().get(0).getInstanceType();
+        // list instance, filter for instance type, calculte current vcpu
+        DescribeInstancesRequest describeInstancesRequest = new DescribeInstancesRequest();
+        Filter filter = new Filter();
+        filter.setName("instance-type");
+        filter.setValues(Lists.newArrayList(instanceType));
+        describeInstancesRequest.setFilters(Lists.newArrayList(filter));
+        int count = amazonEC2Client.describeInstances(describeInstancesRequest).getReservations().stream().map(rs -> rs.getInstances().size()).collect(Collectors.summingInt(Integer::intValue));
+        DescribeInstanceTypesRequest describeInstanceTypesRequest = new DescribeInstanceTypesRequest();
+        describeInstanceTypesRequest.setInstanceTypes(Lists.newArrayList(instanceType));
+        int vcpu = amazonEC2Client.describeInstanceTypes(describeInstanceTypesRequest).getInstanceTypes().get(0).getVCpuInfo().getDefaultVCpus();
+
+        int currentVcpu = count * vcpu;
+        int neededVcpu = instancesToCreate * vcpu;
+        // get quota vcpu by instance type
+        GetServiceQuotaRequest getServiceQuotaRequest = new GetServiceQuotaRequest();
+        getServiceQuotaRequest.setServiceCode("ec2");
+        getServiceQuotaRequest.setQuotaCode("L-1216C47A");
+        Double limit = amazonServiceQuotaRetryClient.getServiceQuotaResult(getServiceQuotaRequest).getQuota().getValue();
+        // calculate diff vcpu by diff
+        if (limit < currentVcpu + neededVcpu) {
+            throw new CloudConnectorException("You request would pass the limit for instance type, abort!");
+        }
+    }
+
+    private AmazonAutoScalingRetryClient getAutoScalingRetryClient(AuthenticatedContext ac) {
+        return awsClient.createAutoScalingRetryClient(new AwsCredentialView(ac.getCloudCredential()),
+                ac.getCloudContext().getLocation().getRegion().value());
+    }
+
+    private AmazonEC2Client getEC2Client(AuthenticatedContext ac) {
+        return awsClient.createAccess(new AwsCredentialView(ac.getCloudCredential()),
+                ac.getCloudContext().getLocation().getRegion().value());
+    }
+
+    private AmazonServiceQuotaRetryClient getServiceQuotasClient(AuthenticatedContext ac) {
+        return awsClient.createServiceQuotasRetryClient(new AwsCredentialView(ac.getCloudCredential()),
+                ac.getCloudContext().getLocation().getRegion().value());
     }
 }

@@ -3,6 +3,8 @@ package com.sequenceiq.cloudbreak.cloud.aws.client;
 import com.amazonaws.services.autoscaling.AmazonAutoScalingClient;
 import com.amazonaws.services.autoscaling.model.DescribeAutoScalingGroupsRequest;
 import com.amazonaws.services.autoscaling.model.DescribeAutoScalingGroupsResult;
+import com.amazonaws.services.autoscaling.model.DescribeLaunchConfigurationsRequest;
+import com.amazonaws.services.autoscaling.model.DescribeLaunchConfigurationsResult;
 import com.amazonaws.services.autoscaling.model.DescribeScalingActivitiesRequest;
 import com.amazonaws.services.autoscaling.model.DescribeScalingActivitiesResult;
 import com.amazonaws.services.autoscaling.model.DetachInstancesRequest;
@@ -48,5 +50,9 @@ public class AmazonAutoScalingRetryClient extends AmazonRetryClient {
 
     public DescribeScalingActivitiesResult describeScalingActivities(DescribeScalingActivitiesRequest request) {
         return retry.testWith2SecDelayMax15Times(() -> mapThrottlingError(() -> client.describeScalingActivities(request)));
+    }
+
+    public DescribeLaunchConfigurationsResult describeLaunchConfigurations(DescribeLaunchConfigurationsRequest request) {
+        return retry.testWith2SecDelayMax15Times(() -> mapThrottlingError(() -> client.describeLaunchConfigurations(request)));
     }
 }

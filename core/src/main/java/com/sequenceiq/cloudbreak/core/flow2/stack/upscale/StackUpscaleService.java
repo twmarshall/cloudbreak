@@ -228,4 +228,8 @@ public class StackUpscaleService {
         LOGGER.debug("Highest privateId: {}", highest);
         return highest == 0 ? 0 : highest + 1;
     }
+
+    public void checkQuotas(int instanceCountToCreate, String instanceGroup) {
+
+    }
 }

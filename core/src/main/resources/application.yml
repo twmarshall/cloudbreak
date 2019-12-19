@@ -136,6 +136,18 @@ cb:
     ssl: false
 
   aws:
+    defaultInstanceTypeQuotaCode: L-1216C47A
+    instanceTypeQuotaCodes:
+      - typeWildCard: f.*
+        quotaCode: L-74FC7D96
+      - typeWildCard: g.*
+        quotaCode: L-DB2E81BA
+      - typeWildCard: inf.*
+        quotaCode: L-1945791B
+      - typeWildCard: inf.*
+        quotaCode: L-417A185B
+      - typeWildCard: x.*
+        quotaCode: L-7295265B
     spotinstances.enabled: true
     disabled.instance.types:
     distrox:

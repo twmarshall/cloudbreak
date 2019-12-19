@@ -7,6 +7,10 @@ import com.amazonaws.services.ec2.model.CreateVolumeRequest;
 import com.amazonaws.services.ec2.model.CreateVolumeResult;
 import com.amazonaws.services.ec2.model.DeleteVolumeRequest;
 import com.amazonaws.services.ec2.model.DeleteVolumeResult;
+import com.amazonaws.services.ec2.model.DescribeInstanceTypesRequest;
+import com.amazonaws.services.ec2.model.DescribeInstanceTypesResult;
+import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
+import com.amazonaws.services.ec2.model.DescribeInstancesResult;
 import com.amazonaws.services.ec2.model.DescribeSubnetsRequest;
 import com.amazonaws.services.ec2.model.DescribeSubnetsResult;
 import com.amazonaws.services.ec2.model.DescribeVolumesRequest;
@@ -48,5 +52,13 @@ public class AmazonEc2RetryClient extends AmazonRetryClient {
 
     public AttachVolumeResult attachVolume(AttachVolumeRequest request) {
         return retry.testWith2SecDelayMax15Times(() -> mapThrottlingError(() -> client.attachVolume(request)));
+    }
+
+    public DescribeInstancesResult describeInstances(DescribeInstancesRequest request) {
+        return retry.testWith2SecDelayMax15Times(() -> mapThrottlingError(() -> client.describeInstances(request)));
+    }
+
+    public DescribeInstanceTypesResult describeInstancesTypes(DescribeInstanceTypesRequest request) {
+        return retry.testWith2SecDelayMax15Times(() -> mapThrottlingError(() -> client.describeInstanceTypes(request)));
     }
 }

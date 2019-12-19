@@ -33,8 +33,11 @@ import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClient;
+import com.amazonaws.services.servicequotas.AWSServiceQuotasClient;
+import com.amazonaws.services.servicequotas.AWSServiceQuotasClientBuilder;
 import com.sequenceiq.cloudbreak.cloud.aws.client.AmazonAutoScalingRetryClient;
 import com.sequenceiq.cloudbreak.cloud.aws.client.AmazonCloudFormationRetryClient;
+import com.sequenceiq.cloudbreak.cloud.aws.client.AmazonServiceQuotaRetryClient;
 import com.sequenceiq.cloudbreak.cloud.aws.view.AwsCredentialView;
 import com.sequenceiq.cloudbreak.cloud.context.AuthenticatedContext;
 import com.sequenceiq.cloudbreak.cloud.context.CloudContext;
@@ -134,6 +137,18 @@ public class AwsClient {
 
     public AmazonAutoScalingRetryClient createAutoScalingRetryClient(AwsCredentialView awsCredential, String regionName) {
         return new AmazonAutoScalingRetryClient(createAutoScalingClient(awsCredential, regionName), retry);
+    }
+
+    public AWSServiceQuotasClient createServiceQuotasClient(AwsCredentialView awsCredential, String regionName) {
+        AWSServiceQuotasClient client = (AWSServiceQuotasClient) (isRoleAssumeRequired(awsCredential) ?
+                        AWSServiceQuotasClientBuilder.standard().withCredentials(createAwsSessionCredentialProvider(awsCredential)).withRegion(regionName).build() :
+                        AWSServiceQuotasClientBuilder.standard().withCredentials(new AWSStaticCredentialsProvider(createAwsCredentials(awsCredential))).withRegion(regionName).build());
+        client.setRegion(RegionUtils.getRegion(regionName));
+        return client;
+    }
+
+    public AmazonServiceQuotaRetryClient createServiceQuotasRetryClient(AwsCredentialView awsCredential, String regionName) {
+        return new AmazonServiceQuotaRetryClient(createServiceQuotasClient(awsCredential, regionName), retry);
     }
 
     public AmazonS3 createS3Client(AwsCredentialView awsCredential) {
